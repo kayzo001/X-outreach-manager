@@ -57,7 +57,7 @@ export async function getXCredentialSummary() {
   const [cfg, row] = await Promise.all([getXOAuthConfig(), prisma.integrationCredential.findUnique({ where: { provider: PROVIDER } })]);
   return {
     source: cfg.source, configured: cfg.source !== "none", clientIdMasked: cfg.clientId ? maskClientId(cfg.clientId) : null,
-    hasSecret: cfg.confidential, version: cfg.version, redirectUri: cfg.redirectUri, error: cfg.error ?? null,
+    hasSecret: cfg.confidential, secretHint: cfg.clientSecret ? `${cfg.clientSecret.length} chars, ends …${cfg.clientSecret.slice(-4)}` : null, version: cfg.version, redirectUri: cfg.redirectUri, error: cfg.error ?? null,
     keyConfigured: credentialsKeyConfigured(), lastTestedAt: row?.lastTestedAt ?? null, lastTestOk: row?.lastTestOk ?? null,
     lastTestMessage: row?.lastTestMessage ?? null, updatedAt: row?.updatedAt ?? null,
   };
@@ -140,6 +140,18 @@ export async function testXConfiguration(actor: string): Promise<TestResult> {
   return result;
 }
 
+/** Same fake-code request WITHOUT client authentication. 400 about the code ⇒ X treats this app as a public client. */
+async function probePublic(cfg: XOAuthConfig): Promise<boolean> {
+  try {
+    const res = await fetch(X_TOKEN_URL, {
+      method: "POST", signal: AbortSignal.timeout(15_000), headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code: `xom-config-test-${randomBytes(8).toString("hex")}`, redirect_uri: cfg.redirectUri, code_verifier: randomBytes(48).toString("base64url"), client_id: cfg.clientId }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return res.status === 400 && (body.error === "invalid_request" || body.error === "invalid_grant");
+  } catch { return false; }
+}
+
 async function probeTokenEndpoint(cfg: XOAuthConfig): Promise<TestResult> {
   let res: Response;
   try {
@@ -153,8 +165,12 @@ async function probeTokenEndpoint(cfg: XOAuthConfig): Promise<TestResult> {
   }
   const body = (await res.json().catch(() => ({}))) as { error?: string; error_description?: string };
   const said = [body.error, body.error_description].filter(Boolean).join(" — ").slice(0, 200);
-  if (res.status === 401 || body.error === "invalid_client" || body.error === "unauthorized_client")
+  if (res.status === 401 || body.error === "invalid_client" || body.error === "unauthorized_client") {
+    // Distinguish "wrong secret" from "this X app is a PUBLIC client (Native/SPA) and must not send a secret at all".
+    const pub = await probePublic(cfg);
+    if (pub) return { ok: false, message: `Your X app is set up as a public client (Native App / Single page App), so X rejects any Client Secret. Fix: in developer.x.com → User authentication settings set “Type of App” to “Web App, Automated App or Bot” and save (then copy the new Client Secret), OR keep the type and remove the secret here (Delete Credentials, then save the Client ID only).` };
     return { ok: false, message: `X rejected the Client ID / Client Secret (HTTP ${res.status}${said ? `: ${said}` : ""}). Re-copy both from Keys and tokens → OAuth 2.0 Client ID and Client Secret (regenerate the secret if unsure — they must come from the same app).${apiKeyHint(cfg.clientId)}` };
+  }
   if (res.status === 400 && (body.error === "invalid_request" || body.error === "invalid_grant"))
     return { ok: true, message: `X accepted the Client ID / Client Secret (it rejected only the test’s deliberately invalid code). Final verification happens when you complete “Continue with X”.${said ? ` X said: ${said}` : ""}` };
   return { ok: null, message: `Inconclusive: X answered HTTP ${res.status}${said ? ` (${said})` : ""}. Try “Continue with X” to verify.` };

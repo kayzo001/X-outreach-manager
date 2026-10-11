@@ -13,6 +13,10 @@ export function XCredentialsPanel({ summary, status }: { summary: XCredentialSum
   const form = useRef<HTMLFormElement>(null);
   const [msg, setMsg] = useState<{ ok: boolean | null; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [typedId, setTypedId] = useState("");
+  const [typedSecret, setTypedSecret] = useState("");
+  // Browsers autofill a saved site LOGIN into the first text+password pair. Keep fields read-only until focused.
+  const [unlocked, setUnlocked] = useState({ id: false, secret: false });
   const [pending, start] = useTransition();
   const inDb = summary.source === "database";
   const run = (fn: () => Promise<{ ok: boolean | null; message: string }>, reset = false) =>
@@ -32,7 +36,7 @@ export function XCredentialsPanel({ summary, status }: { summary: XCredentialSum
         <dt className="text-muted-foreground">Source</dt>
         <dd>{summary.source === "database" ? "Saved in Settings (encrypted in the database)" : summary.source === "environment" ? ".env fallback — saving here takes priority" : "—"}</dd>
         <dt className="text-muted-foreground">Client ID</dt><dd className="font-mono">{summary.clientIdMasked ?? "—"}</dd>
-        <dt className="text-muted-foreground">Client Secret</dt><dd>{summary.hasSecret ? "•••••••• saved (never shown again)" : summary.configured ? "none — public client" : "—"}</dd>
+        <dt className="text-muted-foreground">Client Secret</dt><dd>{summary.hasSecret ? `•••••••• saved — ${summary.secretHint} (compare with the secret X showed you)` : summary.configured ? "none — public client" : "—"}</dd>
         <dt className="text-muted-foreground">Callback URL</dt>
         <dd className="flex items-center gap-2"><code className="break-all">{summary.redirectUri}</code>
           <button type="button" className="text-muted-foreground hover:text-foreground" title="Copy" onClick={async () => { await navigator.clipboard.writeText(summary.redirectUri); setCopied(true); setTimeout(() => setCopied(false), 1200); }}>{copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}</button></dd>
@@ -42,15 +46,22 @@ export function XCredentialsPanel({ summary, status }: { summary: XCredentialSum
       {!summary.keyConfigured && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">CREDENTIALS_ENCRYPTION_KEY is not set on the server, so credentials can’t be stored securely. Ask your host to set it (openssl rand -hex 32) and restart.</div>}
       {summary.error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{summary.error}</div>}
 
-      <form ref={form} className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => saveXCredentialsAction(fd), true); }}>
+      <form ref={form} autoComplete="off" className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(async () => { const r = await saveXCredentialsAction(fd); if (r.ok) { setTypedId(""); setTypedSecret(""); } return r; }, true); }}>
         <div>
           <Label hint="Keys and tokens → OAuth 2.0">Client ID</Label>
-          <Input name="clientId" autoComplete="off" spellCheck={false} required={!inDb} placeholder={inDb ? `${summary.clientIdMasked} — leave blank to keep` : "Paste your OAuth 2.0 Client ID"} />
+          <Input name="clientId" autoComplete="off" data-1p-ignore data-lpignore="true" readOnly={!unlocked.id} onFocus={() => setUnlocked((u) => ({ ...u, id: true }))} value={typedId} onChange={(e) => setTypedId(e.target.value)} spellCheck={false} required={!inDb} placeholder={inDb ? `${summary.clientIdMasked} — leave blank to keep` : "Paste your OAuth 2.0 Client ID"} />
         </div>
         <div>
           <Label hint="stored encrypted">Client Secret</Label>
-          <Input name="clientSecret" type="password" autoComplete="new-password" spellCheck={false} placeholder={summary.hasSecret && inDb ? "•••••••• saved — leave blank to keep" : "Paste your OAuth 2.0 Client Secret"} />
+          <Input name="clientSecret" type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" readOnly={!unlocked.secret} onFocus={() => setUnlocked((u) => ({ ...u, secret: true }))} value={typedSecret} onChange={(e) => setTypedSecret(e.target.value)} spellCheck={false} placeholder={summary.hasSecret && inDb ? "•••••••• saved — leave blank to keep" : "Paste your OAuth 2.0 Client Secret"} />
         </div>
+        {(typedId || typedSecret) && (
+          <div className="rounded-md border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground sm:col-span-2">
+            About to save:{typedId && <> Client ID <span className="font-mono text-foreground">{typedId.trim().slice(0, 4)}…{typedId.trim().slice(-4)}</span> ({typedId.trim().length} chars{typedId.includes("@") ? " — that looks like an email address, not a Client ID!" : ""})</>}
+            {typedSecret && <>{typedId ? " ·" : ""} Client Secret {typedSecret.trim().length} chars ending <span className="font-mono text-foreground">…{typedSecret.trim().slice(-4)}</span></>}
+            {!typedId && inDb && " (Client ID unchanged)"}
+          </div>
+        )}
         <div className="flex flex-wrap gap-2 sm:col-span-2">
           <Button variant="primary" disabled={pending || !summary.keyConfigured}><ShieldCheck className="h-4 w-4" />{inDb ? "Update Credentials" : "Save Credentials"}</Button>
           <Button type="button" disabled={pending || !summary.configured} onClick={() => run(testXConfigurationAction)}><FlaskConical className="h-4 w-4" />Test Configuration</Button>

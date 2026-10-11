@@ -248,3 +248,23 @@ describe("API Key vs OAuth 2.0 Client ID heuristic", () => {
     expect((await testXConfiguration("o")).message).toContain("may be the API Key");
   });
 });
+
+describe("public-client detection", () => {
+  it("401 with the secret but 400 without it ⇒ tells you the X app is a public client", async () => {
+    await saveXCredentials({ clientId: ID, clientSecret: SECRET }, "o");
+    stubFetch(() => ({ status: 400, body: {} }));
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      const withAuth = !!(init?.headers as Record<string, string>)?.Authorization;
+      return new Response(JSON.stringify(withAuth ? { error: "unauthorized_client", error_description: "Missing valid authorization header" } : { error: "invalid_request", error_description: "Value passed for the authorization code was invalid." }), { status: withAuth ? 401 : 400 });
+    }));
+    const r = await testXConfiguration("o");
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("public client");
+  });
+  it("summary exposes only length + last 4 of the secret", async () => {
+    await saveXCredentials({ clientId: ID, clientSecret: SECRET }, "o");
+    const sum = await getXCredentialSummary();
+    expect(sum.secretHint).toBe(`${SECRET.length} chars, ends …${SECRET.slice(-4)}`);
+    expect(JSON.stringify(sum)).not.toContain(SECRET);
+  });
+});
