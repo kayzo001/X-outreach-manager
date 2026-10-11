@@ -235,3 +235,16 @@ describe("12 · no secret leakage", () => {
     expect(logs).toContain("integration.x_credentials_deleted");
   });
 });
+
+describe("API Key vs OAuth 2.0 Client ID heuristic", () => {
+  it("recognises OAuth 2.0 client ids (base64 of '<id>:1:ci') and flags API-key-shaped values", async () => {
+    const { looksLikeOAuth2ClientId } = await import("@/lib/x-config");
+    expect(looksLikeOAuth2ClientId(Buffer.from("abcDEF123xyz:1:ci").toString("base64url"))).toBe(true);
+    expect(looksLikeOAuth2ClientId("aB3dE5gH7jK9mN1pQ3sT5vW7y")).toBe(false); // 25-char API key shape
+  });
+  it("a 401 test result points at the API-key mix-up when the id looks like one", async () => {
+    await saveXCredentials({ clientId: "aB3dE5gH7jK9mN1pQ3sT5vW7y", clientSecret: SECRET }, "o");
+    stubFetch(() => ({ status: 401, body: { error: "unauthorized_client", error_description: "Missing valid authorization header" } }));
+    expect((await testXConfiguration("o")).message).toContain("may be the API Key");
+  });
+});

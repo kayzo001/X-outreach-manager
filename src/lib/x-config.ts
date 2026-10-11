@@ -44,6 +44,12 @@ export async function getXOAuthConfig(db: Tx = prisma): Promise<XOAuthConfig> {
   return { source: "none", clientId: "", clientSecret: "", confidential: false, redirectUri: redirectUri(), version: 0, fingerprint: "none" };
 }
 
+/** X's OAuth 2.0 Client IDs are base64 of "<id>:1:ci". API Keys (consumer keys) are 25 plain alphanumerics. Heuristic only. */
+export function looksLikeOAuth2ClientId(id: string) {
+  try { return /:\d+:ci$/.test(Buffer.from(id.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")); } catch { return false; }
+}
+const apiKeyHint = (id: string) => (looksLikeOAuth2ClientId(id) ? "" : " Note: the saved Client ID doesn’t look like an OAuth 2.0 Client ID — it may be the API Key (Consumer Key) instead. Use the values under “OAuth 2.0 Client ID and Client Secret”.");
+
 export const maskClientId = (id: string) => (id.length <= 8 ? "••••" : `${id.slice(0, 4)}••••••${id.slice(-4)}`);
 
 /** Browser-safe view: no secret, masked id. */
@@ -68,6 +74,8 @@ async function requireReconnect(tx: Tx, reason: string) {
   const r = await tx.xAccount.updateMany({ where: { status: "ACTIVE", lastVerifiedAt: { not: null } }, data: { status: "EXPIRED", lastError: reason } });
   return r.count;
 }
+
+export { apiKeyHint };
 
 export async function saveXCredentials(input: { clientId?: string | null; clientSecret?: string | null }, actor: string) {
   // Blank Client ID on update = keep the saved one (the browser only ever sees a masked version).
@@ -146,7 +154,7 @@ async function probeTokenEndpoint(cfg: XOAuthConfig): Promise<TestResult> {
   const body = (await res.json().catch(() => ({}))) as { error?: string; error_description?: string };
   const said = [body.error, body.error_description].filter(Boolean).join(" — ").slice(0, 200);
   if (res.status === 401 || body.error === "invalid_client" || body.error === "unauthorized_client")
-    return { ok: false, message: `X rejected the Client ID / Client Secret (HTTP ${res.status}${said ? `: ${said}` : ""}). Re-copy both from Keys and tokens → OAuth 2.0.` };
+    return { ok: false, message: `X rejected the Client ID / Client Secret (HTTP ${res.status}${said ? `: ${said}` : ""}). Re-copy both from Keys and tokens → OAuth 2.0 Client ID and Client Secret (regenerate the secret if unsure — they must come from the same app).${apiKeyHint(cfg.clientId)}` };
   if (res.status === 400 && (body.error === "invalid_request" || body.error === "invalid_grant"))
     return { ok: true, message: `X accepted the Client ID / Client Secret (it rejected only the test’s deliberately invalid code). Final verification happens when you complete “Continue with X”.${said ? ` X said: ${said}` : ""}` };
   return { ok: null, message: `Inconclusive: X answered HTTP ${res.status}${said ? ` (${said})` : ""}. Try “Continue with X” to verify.` };
