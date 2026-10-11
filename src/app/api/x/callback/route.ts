@@ -46,7 +46,9 @@ export async function GET(req: NextRequest) {
   const ex = await exchangeCode(code, st.s.verifier, cfg);
   if (!ex.ok) {
     await logActivity({ type: "oauth.failed", level: "error", message: `X token exchange failed: ${ex.error}`, apiStatus: ex.status || null });
-    return back("token_failed", `${ex.status || "network"}: ${ex.error}`);
+    const hint = ex.status === 401 && !cfg.confidential ? " — no Client Secret is saved, but your X app expects one (Web App / confidential client). Add the OAuth 2.0 Client Secret in Step 1."
+      : ex.status === 401 ? " — X didn't accept the saved Client Secret for this Client ID. Regenerate it in Keys and tokens → OAuth 2.0 and update it in Step 1." : "";
+    return back("token_failed", `${ex.status || "network"}: ${ex.error}${hint}`);
   }
   const me = await fetchMe(ex.tokens.access_token);
   if (!me.ok) {

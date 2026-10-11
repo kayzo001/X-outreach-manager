@@ -44,7 +44,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     state_mismatch: ["Security check failed (state mismatch).", "danger", "Start again from this page — don’t reuse an old X authorisation tab."],
     state_expired: ["The connection attempt expired (10-minute limit).", "danger", "Click Continue with X again."],
     state_tampered: ["Security check failed.", "danger", "Start again from this page."],
-    token_failed: ["X rejected the token exchange.", "danger", "Most common causes: the callback URL in the portal doesn’t exactly match the one below; wrong Client ID/Secret; or the secret belongs to a different app. Check, restart the server, retry."],
+    token_failed: ["X rejected the token exchange.", "danger", "Most common causes: the Client Secret is missing, outdated (X issues a new one when app settings change) or from a different app — or the callback URL in the portal doesn’t exactly match the one below. Re-copy both values from Keys and tokens → OAuth 2.0, click Update Credentials, then Test Configuration."],
     me_failed: ["Connected to X but could not read your profile.", "danger", "Check that the app has users.read and that your X API credits/plan allow user lookups."],
     missing_client: ["No X developer credentials are configured.", "warning", "Paste your Client ID and Client Secret in Settings → X Integration → Step 1, then click Continue with X."],
     config_changed: ["Your X credentials changed while you were on X’s approval page.", "warning", "Nothing was saved. Click Continue with X again to connect with the current credentials."],
