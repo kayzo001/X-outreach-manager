@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 224 25% 6%;
+  --foreground: 213 25% 92%;
+  --card: 224 22% 9%;
+  --muted: 224 18% 13%;
+  --muted-foreground: 218 12% 62%;
+  --border: 224 16% 17%;
+  --primary: 252 88% 68%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 224 18% 14%;
+  --destructive: 0 78% 60%;
+  --success: 152 62% 45%;
+  --warning: 38 92% 56%;
+}
+* { border-color: hsl(var(--border)); }
+html { color-scheme: dark; }
+body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiased; }
+::selection { background: hsl(var(--primary) / 0.35); }
+input, select, textarea { color-scheme: dark; }
+.scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; }
+.glow { box-shadow: 0 0 0 1px hsl(var(--primary) / 0.25), 0 8px 30px -12px hsl(var(--primary) / 0.5); }

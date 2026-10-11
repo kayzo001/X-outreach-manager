@@ -1,0 +1,32 @@
+# Local development / single-VPS deployment:  docker compose up --build
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment: { POSTGRES_USER: xom, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-xom_dev_password}, POSTGRES_DB: xom }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U xom"], interval: 5s, retries: 10 }
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]   # AOF persistence: queue state survives restarts
+    volumes: [redisdata:/data]
+  web:
+    build: .
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://xom:${POSTGRES_PASSWORD:-xom_dev_password}@db:5432/xom
+      REDIS_URL: redis://redis:6379
+    depends_on: { db: { condition: service_healthy }, redis: { condition: service_started } }
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://xom:${POSTGRES_PASSWORD:-xom_dev_password}@db:5432/xom
+      REDIS_URL: redis://redis:6379
+    depends_on: { web: { condition: service_started } }   # web applies migrations first
+volumes: { pgdata: {}, redisdata: {} }

@@ -1,0 +1,59 @@
+# Render Blueprint — Dashboard → New → Blueprint → pick this repo → fill the prompted values → Apply.
+# ~ $20/month: web starter $7 + worker starter $7 + Postgres basic-256mb ~$6 + Key Value free.
+envVarGroups:
+  - name: xom-shared
+    envVars:
+      - key: ENCRYPTION_KEY              # encrypts OAuth tokens — auto-generated, never change it
+        generateValue: true
+      - key: CREDENTIALS_ENCRYPTION_KEY  # encrypts the X Client Secret saved in Settings
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DRY_RUN                     # initial default only; the Settings toggle wins
+        value: "true"
+      - key: X_PROVIDER                  # only affects the demo account; real OAuth accounts use the X API
+        value: mock
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
+
+databases:
+  - name: xom-db
+    plan: basic-256mb
+    databaseName: xom
+
+services:
+  - type: keyvalue
+    name: xom-redis
+    plan: free                           # Redis only wakes the worker; all state lives in Postgres
+    maxmemoryPolicy: noeviction
+    ipAllowList: []                      # private network only
+
+  - type: web
+    name: xom-web
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - fromGroup: xom-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: xom-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: xom-redis, property: connectionString }
+      - key: ADMIN_EMAIL                 # your login — prompted on first deploy
+        sync: false
+      - key: ADMIN_PASSWORD              # 10+ characters — prompted on first deploy
+        sync: false
+      - key: ANTHROPIC_API_KEY           # optional (AI drafting) — leave blank to skip
+        sync: false
+
+  - type: worker
+    name: xom-worker
+    runtime: docker
+    plan: starter
+    dockerCommand: npm run worker
+    envVars:
+      - fromGroup: xom-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: xom-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: xom-redis, property: connectionString }

@@ -1,0 +1,538 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  url      = env("DATABASE_URL")
+  provider = "postgresql"
+}
+
+// ───────────── Enums ─────────────
+enum AccountStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  DISCONNECTED
+}
+enum ResolveStatus {
+  UNRESOLVED
+  RESOLVED
+  NOT_FOUND
+  SUSPENDED
+}
+enum ConsentStatus {
+  UNKNOWN
+  NOT_OPTED_IN
+  OPTED_IN
+  EXPIRED
+  OPTED_OUT
+}
+enum HistoryStatus {
+  UNKNOWN
+  NONE_FOUND
+  CONTACTED
+}
+enum CustomerStatus {
+  NONE
+  INTERESTED
+  NOT_INTERESTED
+  POTENTIAL_CUSTOMER
+  CUSTOMER
+}
+enum MrrKind {
+  UNKNOWN
+  SELF_REPORTED
+  VERIFIED
+}
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+enum JobStatus {
+  PENDING_APPROVAL
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  UNCERTAIN
+  CANCELLED
+  SKIPPED
+  DRY_RUN
+}
+enum LedgerState {
+  RESERVED
+  SENT
+  UNCERTAIN
+  MANUAL
+  VOID
+}
+enum Direction {
+  OUT
+  IN
+}
+enum ConvStatus {
+  OPEN
+  INTERESTED
+  NOT_INTERESTED
+  POTENTIAL_CUSTOMER
+  CONVERTED
+  DO_NOT_CONTACT
+}
+enum ImportStatus {
+  UPLOADED
+  PREVIEWED
+  COMMITTING
+  COMMITTED
+  FAILED
+}
+enum ImportRowStatus {
+  PENDING
+  VALID
+  NEW
+  EXISTING
+  DUP_IN_FILE
+  INVALID
+}
+enum ManualStatus {
+  QUEUED
+  CONTACTED
+  REPLIED
+  SKIPPED
+}
+
+// ───────────── Auth / accounts ─────────────
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  accounts     XAccount[]
+  @@map("users")
+}
+
+model XAccount {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xUserId          String        @unique
+  username         String
+  accessTokenEnc   String
+  refreshTokenEnc  String?
+  tokenExpiresAt   DateTime?
+  scopes           String[]
+  status           AccountStatus @default(ACTIVE)
+  lastSyncAt       DateTime?
+  syncCursor       String?
+  rateLimitedUntil DateTime?
+  lastVerifiedAt   DateTime?
+  lastError        String?
+  oauthClientId    String?       // which X app (Client ID) issued this account's tokens
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @default(now()) @updatedAt
+  campaigns        Campaign[]
+  jobs             MessageJob[]
+  ledger           OutreachLedger[]
+  conversations    Conversation[]
+  @@map("x_accounts")
+}
+
+// ───────────── Contacts ─────────────
+model Contact {
+  id                 String         @id @default(cuid())
+  usernameNormalized String         @unique
+  usernameDisplay    String
+  xUserId            String?        @unique
+  resolveStatus      ResolveStatus  @default(UNRESOLVED)
+  founderName        String?
+  company            String?
+  website            String?
+  product            String?
+  industry           String?
+  location           String?
+  country            String?
+  language           String?
+  bio                String?
+  notes              String?
+  customHook         String?
+  followers          Int?
+  verified           Boolean?
+  lastActiveAt       DateTime?
+  mrr                Int?
+  mrrKind            MrrKind        @default(UNKNOWN)
+  mrrSourceUrl       String?
+  sourceUrl          String?
+  leadSource         String?
+  customerStatus     CustomerStatus @default(NONE)
+  consentStatus      ConsentStatus  @default(UNKNOWN)
+  historyStatus      HistoryStatus  @default(UNKNOWN)
+  doNotContact       Boolean        @default(false)
+  manualStatus       ManualStatus?
+  customFields       Json?
+  firstImportId      String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  identifiers   ContactIdentifier[]
+  campaigns     CampaignContact[]
+  jobs          MessageJob[]
+  messages      Message[]
+  conversations Conversation[]
+  consents      ConsentRecord[]
+  ledger        OutreachLedger[]
+  tags          ContactTag[]
+  score         LeadScore?
+  reminders     Reminder[]
+  importRows    CsvImportRow[]
+
+  @@index([consentStatus])
+  @@index([historyStatus])
+  @@index([company])
+  @@index([industry])
+  @@index([createdAt])
+  @@map("contacts")
+}
+
+model ContactIdentifier {
+  id        String   @id @default(cuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type      String // USERNAME | X_USER_ID | PREVIOUS_USERNAME
+  value     String
+  createdAt DateTime @default(now())
+  @@unique([type, value])
+  @@index([contactId])
+  @@map("contact_identifiers")
+}
+
+// ───────────── Imports ─────────────
+model CsvImport {
+  id                String       @id @default(cuid())
+  filename          String
+  status            ImportStatus @default(UPLOADED)
+  headers           String[]
+  mapping           Json?
+  campaignId        String?
+  totalRows         Int          @default(0)
+  validRows         Int          @default(0)
+  newRows           Int          @default(0)
+  existingRows      Int          @default(0)
+  dupInFileRows     Int          @default(0)
+  invalidRows       Int          @default(0)
+  committedRows     Int          @default(0)
+  createdAt         DateTime     @default(now())
+  committedAt       DateTime?
+  rows              CsvImportRow[]
+  @@map("csv_imports")
+}
+
+model CsvImportRow {
+  id                 String          @id @default(cuid())
+  importId           String
+  import             CsvImport       @relation(fields: [importId], references: [id], onDelete: Cascade)
+  rowNumber          Int
+  raw                Json
+  status             ImportRowStatus @default(PENDING)
+  reason             String?
+  usernameNormalized String?
+  contactId          String?
+  contact            Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  @@index([importId, status])
+  @@index([importId, rowNumber])
+  @@map("csv_import_rows")
+}
+
+// ───────────── Campaigns ─────────────
+model MessageTemplate {
+  id        String     @id @default(cuid())
+  name      String
+  body      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  campaigns Campaign[]
+  @@map("message_templates")
+}
+
+model Campaign {
+  id              String          @id @default(cuid())
+  name            String
+  description     String?
+  audience        String?
+  status          CampaignStatus  @default(DRAFT)
+  xAccountId      String?
+  xAccount        XAccount?       @relation(fields: [xAccountId], references: [id], onDelete: SetNull)
+  templateId      String?
+  template        MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateBody    String?
+  schedule        Json
+  requireApproval Boolean         @default(true)
+  autoPaused      Boolean         @default(false)
+  pauseReason     String?
+  consecutiveErrors Int           @default(0)
+  nextSendAt      DateTime?
+  batchSentCount  Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  startedAt       DateTime?
+  contacts        CampaignContact[]
+  jobs            MessageJob[]
+  messages        Message[]
+  @@index([status])
+  @@map("campaigns")
+}
+
+model CampaignContact {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  customMessage String?
+  skipped    Boolean  @default(false)
+  addedAt    DateTime @default(now())
+  @@unique([campaignId, contactId])
+  @@index([contactId])
+  @@map("campaign_contacts")
+}
+
+// ───────────── Sending ─────────────
+model MessageJob {
+  id             String    @id @default(cuid())
+  campaignId     String
+  campaign       Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  xAccountId     String
+  xAccount       XAccount  @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  consentRecordId String?
+  body           String
+  bodyHash       String
+  idempotencyKey String    @unique
+  status         JobStatus @default(QUEUED)
+  notBefore      DateTime?
+  attempts       Int       @default(0)
+  claimedBy      String?
+  claimedAt      DateTime?
+  apiStatus      Int?
+  errorCategory  String?
+  lastError      String?
+  xEventId       String?
+  dryRun         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  sentAt         DateTime?
+  messages       Message[]
+  // A partial unique index (see migration) allows only ONE live job per (account, contact).
+  @@index([status, notBefore])
+  @@index([campaignId, status])
+  @@map("message_jobs")
+}
+
+model OutreachLedger {
+  id         String      @id @default(cuid())
+  xAccountId String
+  xAccount   XAccount    @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  state      LedgerState
+  jobId      String?
+  campaignId String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  // Permanent first-contact guard: one row per sender/recipient pair, ever.
+  @@unique([xAccountId, contactId])
+  @@index([contactId])
+  @@map("outreach_ledger")
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  jobId          String?
+  job            MessageJob?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contactId      String
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  xAccountId     String?
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  direction      Direction
+  xEventId       String?      @unique
+  text           String
+  manual         Boolean      @default(false)
+  sentAt         DateTime
+  consentRecordId String?
+  createdAt      DateTime     @default(now())
+  @@index([contactId, sentAt])
+  @@index([campaignId, sentAt])
+  @@index([direction, sentAt])
+  @@map("messages")
+}
+
+model Conversation {
+  id               String     @id @default(cuid())
+  xAccountId       String
+  xAccount         XAccount   @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  contactId        String
+  contact          Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  xConversationId  String?
+  lastIncomingAt   DateTime?
+  lastOutgoingAt   DateTime?
+  lastPreview      String?
+  replied          Boolean    @default(false)
+  unread           Boolean    @default(false)
+  status           ConvStatus @default(OPEN)
+  tags             String[]
+  notes            String?
+  messages         Message[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  @@unique([xAccountId, contactId])
+  @@index([xConversationId])
+  @@index([replied, unread])
+  @@map("conversations")
+}
+
+// ───────────── Consent / suppression ─────────────
+model ConsentRecord {
+  id            String        @id @default(cuid())
+  contactId     String
+  contact       Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status        ConsentStatus
+  source        String
+  evidence      String?
+  scope         String?
+  xAccountId    String?
+  grantedAt     DateTime      @default(now())
+  expiresAt     DateTime?
+  lastCheckedAt DateTime?
+  createdAt     DateTime      @default(now())
+  @@index([contactId, createdAt])
+  @@map("consent_records")
+}
+
+model SuppressionEntry {
+  id                 String   @id @default(cuid())
+  usernameNormalized String   @unique
+  xUserId            String?  @unique
+  contactId          String?
+  reason             String
+  createdAt          DateTime @default(now())
+  @@map("suppression_list")
+}
+
+// ───────────── Intelligence ─────────────
+model Tag {
+  id       String       @id @default(cuid())
+  name     String       @unique
+  contacts ContactTag[]
+  @@map("lead_tags")
+}
+
+model ContactTag {
+  contactId String
+  tagId     String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  @@id([contactId, tagId])
+  @@map("contact_tags")
+}
+
+model LeadScore {
+  contactId  String   @id
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  score      Int
+  factors    Json
+  incomplete Boolean  @default(true)
+  computedAt DateTime @default(now())
+  @@index([score])
+  @@map("lead_scores")
+}
+
+model SavedFilter {
+  id         String   @id @default(cuid())
+  name       String
+  definition Json
+  createdAt  DateTime @default(now())
+  @@map("saved_filters")
+}
+
+model Reminder {
+  id        String    @id @default(cuid())
+  contactId String
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  kind      String
+  note      String?
+  dueAt     DateTime
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  @@index([done, dueAt])
+  @@map("reminders")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  body      String?
+  contactId String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([read, createdAt])
+  @@map("notifications")
+}
+
+// ───────────── Ops ─────────────
+model ActivityLog {
+  id         String   @id @default(cuid())
+  at         DateTime @default(now())
+  level      String   @default("info")
+  type       String
+  message    String
+  contactId  String?
+  campaignId String?
+  xAccountId String?
+  jobId      String?
+  apiStatus  Int?
+  errorCategory String?
+  retryCount Int?
+  consentRecordId String?
+  meta       Json?
+  @@index([at])
+  @@index([campaignId, at])
+  @@index([contactId, at])
+  @@index([type])
+  @@map("activity_logs")
+}
+
+model WorkerStatus {
+  id          String   @id
+  heartbeatAt DateTime
+  startedAt   DateTime
+  info        Json?
+  @@map("worker_status")
+}
+
+/// Developer credentials for third-party integrations, managed from Settings. Secrets are encrypted (CREDENTIALS_ENCRYPTION_KEY).
+model IntegrationCredential {
+  id              String    @id @default(cuid())
+  provider        String    @unique // "x"
+  clientId        String
+  clientSecretEnc String?   // null = public client (no secret)
+  version         Int       @default(1) // bumped on every change; OAuth handshakes are pinned to it
+  lastTestedAt    DateTime?
+  lastTestOk      Boolean?
+  lastTestMessage String?
+  updatedBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@map("integration_credentials")
+}
+
+model AppSetting {
+  key   String @id
+  value Json
+  @@map("app_settings")
+}
