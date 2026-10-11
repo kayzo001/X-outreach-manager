@@ -55,7 +55,7 @@ npm test        # 95 tests against a real Postgres: normalisation, dedupe, DB co
 
 Architecture = **web** + **worker** (same Docker image) + **Postgres** + **Redis**. Both web and worker need the same env vars.
 
-### Option A — Render (blueprint included)
+### Option A — Render (blueprint included) — step-by-step: [docs/DEPLOY.md](docs/DEPLOY.md)
 1. Push this folder to a private GitHub repo.
 2. Render → **New → Blueprint** → pick the repo (`render.yaml` creates web, worker, Postgres, Redis).
 3. In the dashboard set the `sync: false` variables (below). Generate secrets locally with the `openssl` commands above — **never paste them in chat or commit them**.
