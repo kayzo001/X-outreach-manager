@@ -20,4 +20,4 @@ RUN npm prune --omit=dev --ignore-scripts && npx prisma generate && chown -R nod
 USER node
 EXPOSE 3000
 # Web: apply migrations (safe/idempotent), create the owner login on first boot only, then serve.
-CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts --if-empty && npm run start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && (npx tsx prisma/seed.ts --if-empty || echo '[seed] could not create the owner login - check ADMIN_EMAIL / ADMIN_PASSWORD (10+ chars)') && npm run start"]
