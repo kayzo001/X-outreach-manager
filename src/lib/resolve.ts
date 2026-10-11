@@ -10,7 +10,7 @@ export async function resolvePending(accountId: string, limit = 100, providerOve
   if (!acc || acc.status !== "ACTIVE") return { resolved: 0, failed: 0, conflicts: 0 };
   const provider = providerOverride ?? providerFor(acc);
   const contacts = await prisma.contact.findMany({
-    where: { resolveStatus: "UNRESOLVED", xUserId: null, doNotContact: false, ...(scope === "opted_in" ? { consentStatus: "OPTED_IN" as const } : scope === "campaigns" ? { campaigns: { some: { campaign: { status: { in: ["ACTIVE", "DRAFT", "PAUSED"] as ("ACTIVE" | "DRAFT" | "PAUSED")[] } } } } } : {}) },
+    where: { resolveStatus: "UNRESOLVED", xUserId: null, doNotContact: false, ...(scope === "opted_in" ? { OR: [{ consentStatus: "OPTED_IN" as const }, { manualStatus: "CONTACTED" as const }] } : scope === "campaigns" ? { campaigns: { some: { campaign: { status: { in: ["ACTIVE", "DRAFT", "PAUSED"] as ("ACTIVE" | "DRAFT" | "PAUSED")[] } } } } } : {}) },
     orderBy: [{ campaigns: { _count: "desc" } }, { createdAt: "asc" }], take: limit,
   });
   if (!contacts.length) return { resolved: 0, failed: 0, conflicts: 0 };

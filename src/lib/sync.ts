@@ -52,7 +52,10 @@ async function ingestEvent(acc: { id: string; xUserId: string }, contact: { id: 
     create: { xAccountId: acc.id, contactId: contact.id, xConversationId: ev.conversationId },
     update: { xConversationId: ev.conversationId },
   });
-  await prisma.message.create({ data: { contactId: contact.id, xAccountId: acc.id, conversationId: conv.id, direction: inbound ? "IN" : "OUT", xEventId: ev.id, text: ev.text, sentAt: ev.createdAt, manual: !inbound } });
+  // An outgoing DM we already recorded as "marked contacted" (manual, no X id yet) is the same message — link it, don't double count.
+  const manualTwin = inbound ? null : await prisma.message.findFirst({ where: { contactId: contact.id, direction: "OUT", manual: true, xEventId: null, sentAt: { gte: new Date(ev.createdAt.getTime() - 3 * 86_400_000), lte: new Date(ev.createdAt.getTime() + 3 * 86_400_000) } } });
+  if (manualTwin) await prisma.message.update({ where: { id: manualTwin.id }, data: { xEventId: ev.id, conversationId: conv.id, xAccountId: acc.id, sentAt: ev.createdAt } });
+  else await prisma.message.create({ data: { contactId: contact.id, xAccountId: acc.id, conversationId: conv.id, direction: inbound ? "IN" : "OUT", xEventId: ev.id, text: ev.text, sentAt: ev.createdAt, manual: !inbound } });
 
   if (inbound) {
     stats.inbound++;
@@ -63,6 +66,7 @@ async function ingestEvent(acc: { id: string; xUserId: string }, contact: { id: 
     const cancelled = await prisma.messageJob.updateMany({ where: { contactId: contact.id, status: { in: ["QUEUED", "PENDING_APPROVAL"] } }, data: { status: "CANCELLED", errorCategory: "REPLIED", lastError: "Recipient replied" } });
     if (!wasReplied) {
       stats.newReplies++;
+      await prisma.reminder.updateMany({ where: { contactId: contact.id, done: false, kind: "Check for reply" }, data: { done: true } });
       await logActivity({ type: "reply.received", message: `Reply from @${contact.usernameNormalized}${cancelled.count ? ` — ${cancelled.count} pending message(s) cancelled` : ""}`, contactId: contact.id, xAccountId: acc.id });
       await notify("reply", `New reply from @${contact.usernameNormalized}`, ev.text.slice(0, 200), contact.id);
     }
@@ -91,7 +95,8 @@ async function ingestEvent(acc: { id: string; xUserId: string }, contact: { id: 
 export async function checkContactHistory(accountId: string, contactIds: string[], providerOverride?: DmProvider) {
   const acc = await prisma.xAccount.findUniqueOrThrow({ where: { id: accountId } });
   const provider = providerOverride ?? providerFor(acc);
-  const contacts = await prisma.contact.findMany({ where: { id: { in: contactIds }, xUserId: { not: null }, historyStatus: "UNKNOWN" } });
+  // Includes leads already marked contacted by hand: their thread holds the DM you sent and any reply.
+  const contacts = await prisma.contact.findMany({ where: { id: { in: contactIds }, xUserId: { not: null } } });
   const stats = newStats(0);
   let checked = 0;
   for (const c of contacts) {

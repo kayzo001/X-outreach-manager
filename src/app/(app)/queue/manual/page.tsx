@@ -34,8 +34,8 @@ export default async function ManualQueue({ searchParams }: { searchParams: Prom
   const q = (o: Record<string, string>) => `/queue/manual?${new URLSearchParams({ ...(sp.campaign ? { campaign: sp.campaign } : {}), ...o })}`;
   return (
     <>
-      <PageHeader title="Manual outreach queue" desc="Leads without a documented opt-in. You review each suggested message and send it yourself on X — nothing here is ever sent automatically." />
-      <Alert tone="primary" title="Why manual?">X only permits automated DMs to people who have opted in. Marking someone contacted here updates the same permanent history the automation uses, so no one is messaged twice.</Alert>
+      <PageHeader title="Manual outreach queue" desc="Cold leads — no opt-in needed to prepare or work them. You send each DM yourself on X; the app drafts, de-duplicates and records it." actions={<Link href={`/queue/manual/focus${sp.campaign ? `?campaign=${sp.campaign}` : ""}`} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground glow">▶ Start focus mode</Link>} />
+      <Alert tone="primary" title="Fastest way through a big list: Focus mode">One lead at a time with keyboard shortcuts (C copy · O open profile · M mark contacted · S skip), daily target and batch tracking. Everything you mark is recorded in the same permanent history the automation uses, so no one is messaged twice.</Alert>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l]) => <Link key={k} href={q({ tab: k })} className={cn("rounded-md px-3 py-1.5 text-sm", tab === k ? "bg-primary/15 font-medium text-primary" : "text-muted-foreground hover:bg-muted")}>{l}</Link>)}
         <form className="ml-auto"><input type="hidden" name="tab" value={tab} /><Select name="campaign" defaultValue={sp.campaign ?? ""} className="h-8 w-56" onChange={undefined}><option value="">All campaigns</option>{campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select><button className="ml-2 text-xs text-primary">Filter</button></form>

@@ -52,6 +52,7 @@ async function handle(name: EngineJob) {
       return;
     }
     case "reminders": {
+      await dailyOutreachNudge();
       const due = await prisma.reminder.findMany({ where: { done: false, dueAt: { lte: new Date() } }, include: { contact: true }, take: 50 });
       for (const r of due) {
         const exists = await prisma.notification.findFirst({ where: { type: `reminder:${r.id}` } });
@@ -60,6 +61,15 @@ async function handle(name: EngineJob) {
       return;
     }
   }
+}
+
+async function dailyOutreachNudge() {
+  const { manualStats } = await import("../src/lib/manual-outreach");
+  const st = await manualStats();
+  if (!st.inHours || st.remaining === 0) return;
+  const key = `outreach-day:${new Date().toISOString().slice(0, 10)}`;
+  if (await prisma.notification.findFirst({ where: { type: key } })) return;
+  await notify(key, `Today's outreach: ${st.today}/${st.target}`, `${st.remaining} cold leads are ready in Manual Queue → Focus mode.`);
 }
 
 async function main() {

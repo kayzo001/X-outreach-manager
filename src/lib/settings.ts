@@ -17,6 +17,16 @@ export interface AppSettings {
   dmSyncIntervalMinutes: number;     // how often the worker reads DM history (X bills per event read)
   dmSyncPageSize: number;            // events per incremental read
   autoResolveScope: "opted_in" | "campaigns" | "all"; // whose usernames the worker resolves automatically ($/user)
+  // Manual (human-sent) outreach
+  manualDailyTarget: number;        // leads to contact per day
+  manualBatchSize: number;          // pause-and-review prompt after this many
+  manualWorkStart: string;          // "09:00" in defaultTimezone
+  manualWorkEnd: string;
+  manualWorkDays: number[];         // ISO weekdays
+  manualFollowupDays: number;       // "check for reply" reminder N days after contact (0 = off)
+  outreachPitch: string;            // one sentence about what YOU offer — used in drafts
+  outreachCta: string;              // closing question
+  senderName: string;               // how you sign off (blank = no sign-off)
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -36,6 +46,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dmSyncIntervalMinutes: 60,
   dmSyncPageSize: 20,
   autoResolveScope: "opted_in",
+  manualDailyTarget: 30,
+  manualBatchSize: 10,
+  manualWorkStart: "09:00",
+  manualWorkEnd: "17:00",
+  manualWorkDays: [1, 2, 3, 4, 5],
+  manualFollowupDays: 3,
+  outreachPitch: "I run a small studio that turns SaaS products into short-form videos that bring in signups.",
+  outreachCta: "Would you be open to me sending over 2–3 video ideas for {{company}}?",
+  senderName: "",
 };
 
 export async function getSettings(db: Tx = prisma): Promise<AppSettings> {

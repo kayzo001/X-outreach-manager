@@ -6,7 +6,7 @@ import { ActionButton } from "@/components/action-button";
 import { XCredentialsPanel, IntegrationStatus } from "@/components/x-credentials";
 import { getXCredentialSummary } from "@/lib/x-config";
 import { isRealOAuthAccount } from "@/lib/provider";
-import { connectDemoAccount, deleteTemplate, disconnectAccount, saveSettings, saveTemplate, setDryRun, setKillSwitch, syncNow, resolveNow, rescoreAll } from "../../actions";
+import { saveManualSettings, connectDemoAccount, deleteTemplate, disconnectAccount, saveSettings, saveTemplate, setDryRun, setKillSwitch, syncNow, resolveNow, rescoreAll } from "../../actions";
 import { ago, dt } from "@/lib/utils";
 import { usedVariables } from "@/lib/template";
 
@@ -145,6 +145,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <div className="sm:col-span-2 flex gap-2"><Button variant="primary">Save settings</Button></div>
           </form>
           <div className="border-t px-5 py-3"><ActionButton label="Re-score all leads" action={rescoreAll} /></div></Card>
+
+        <Card id="manual" className="xl:col-span-2"><CardHeader title="Manual outreach (Focus mode)" desc="Targets and drafts for cold leads you message yourself on X. These never send anything automatically." />
+          <form action={saveManualSettings} className="grid gap-4 p-5 md:grid-cols-4">
+            <div><Label>Daily target</Label><Input name="manualDailyTarget" type="number" min={1} max={500} defaultValue={s.manualDailyTarget} /></div>
+            <div><Label hint="break + inbox check after">Batch size</Label><Input name="manualBatchSize" type="number" min={1} max={100} defaultValue={s.manualBatchSize} /></div>
+            <div><Label hint={s.defaultTimezone}>Working hours</Label><div className="flex items-center gap-2"><Input name="manualWorkStart" type="time" defaultValue={s.manualWorkStart} /><span className="text-muted-foreground">–</span><Input name="manualWorkEnd" type="time" defaultValue={s.manualWorkEnd} /></div></div>
+            <div><Label hint="days · 0 = off">“Check for reply” reminder after</Label><Input name="manualFollowupDays" type="number" min={0} max={60} defaultValue={s.manualFollowupDays} /></div>
+            <div className="md:col-span-4"><Label>Working days</Label><div className="flex flex-wrap gap-1.5">{([[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]] as const).map(([d, l]) => <label key={d} className="flex cursor-pointer items-center gap-1.5 rounded-md border bg-muted/50 px-2.5 py-1.5 text-xs has-[:checked]:border-primary has-[:checked]:bg-primary/15"><input type="checkbox" name="manualWorkDays" value={d} defaultChecked={s.manualWorkDays.includes(d)} className="hidden" />{l}</label>)}</div></div>
+            <div className="md:col-span-2"><Label hint="one sentence — what you offer">Your pitch (used in drafts)</Label><Textarea name="outreachPitch" rows={2} defaultValue={s.outreachPitch} /></div>
+            <div className="md:col-span-2"><Label hint="may use {{company}} — dropped if unknown">Closing question</Label><Textarea name="outreachCta" rows={2} defaultValue={s.outreachCta} /></div>
+            <div><Label hint="blank = no sign-off">Sign-off name</Label><Input name="senderName" defaultValue={s.senderName} placeholder="e.g. Sam" /></div>
+            <div className="flex items-end md:col-span-3"><Button variant="primary">Save manual outreach settings</Button></div>
+          </form></Card>
 
         <Card className="xl:col-span-2"><CardHeader title="Message templates" desc="Variables: {{first_name}} {{company}} {{product}} {{industry}} {{custom_hook}} {{founder_name}} {{username}}" />
           <div className="grid gap-4 p-5 lg:grid-cols-2">

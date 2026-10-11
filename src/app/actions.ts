@@ -24,6 +24,7 @@ import { MAX_DM_LENGTH } from "@/lib/template";
 import { draftWithClaude } from "@/lib/ai";
 import { commitImport } from "@/lib/import";
 import { diagnoseCampaign } from "@/lib/diagnose";
+import { nextManualLead, manualStats, markManualContacted, skipManualLead } from "@/lib/manual-outreach";
 import type { ConvStatus, CustomerStatus, ConsentStatus, ManualStatus } from "@prisma/client";
 
 const s = (f: FormData, k: string) => { const v = f.get(k); return typeof v === "string" ? v.trim() : ""; };
@@ -370,4 +371,40 @@ export async function addImportToCampaign(campaignId: string, importId: string):
   } catch (e) {
     return { ok: false, message: (e as Error).message.slice(0, 200) };
   }
+}
+
+// ─────────── Manual outreach — Focus mode (the user sends on X; nothing here transmits) ───────────
+export async function focusNext(campaignId: string | null, excludeIds: string[]) {
+  await requireUser();
+  const [lead, stats] = await Promise.all([nextManualLead({ campaignId, excludeIds: excludeIds.slice(-500) }), manualStats(campaignId)]);
+  return { lead, stats };
+}
+export async function focusMarkContacted(contactId: string, campaignId: string | null, text: string) {
+  await requireUser();
+  if (!text.trim() || text.length > MAX_DM_LENGTH) throw new Error("Message text is required");
+  const r = await markManualContacted(contactId, { campaignId, text: text.trim() });
+  revalidatePath("/queue/manual"); revalidatePath("/");
+  return r;
+}
+export async function focusSkip(contactId: string, reason: "skip" | "not_fit") {
+  await requireUser();
+  await skipManualLead(contactId, reason);
+}
+export async function saveManualSettings(f: FormData) {
+  await requireUser();
+  const time = (k: string, d: string) => (/^\d{2}:\d{2}$/.test(s(f, k)) ? s(f, k) : d);
+  const cur = await getSettings();
+  const days = f.getAll("manualWorkDays").map(Number).filter((d) => d >= 1 && d <= 7);
+  const next: Partial<AppSettings> = {
+    manualDailyTarget: Math.max(1, Math.min(500, n(f, "manualDailyTarget", cur.manualDailyTarget))),
+    manualBatchSize: Math.max(1, Math.min(100, n(f, "manualBatchSize", cur.manualBatchSize))),
+    manualWorkStart: time("manualWorkStart", cur.manualWorkStart), manualWorkEnd: time("manualWorkEnd", cur.manualWorkEnd),
+    manualWorkDays: days.length ? days : cur.manualWorkDays,
+    manualFollowupDays: Math.max(0, Math.min(60, n(f, "manualFollowupDays", cur.manualFollowupDays))),
+    outreachPitch: s(f, "outreachPitch").slice(0, 400) || cur.outreachPitch,
+    outreachCta: s(f, "outreachCta").slice(0, 300) || cur.outreachCta,
+    senderName: s(f, "senderName").slice(0, 60),
+  };
+  for (const [k, v] of Object.entries(next)) await setSetting(k as keyof AppSettings, v as never);
+  revalidatePath("/settings"); revalidatePath("/queue/manual/focus");
 }
