@@ -4,6 +4,7 @@ import { encrypt } from "@/lib/crypto";
 import { logActivity } from "@/lib/activity";
 import { OAUTH_COOKIE, exchangeCode, fetchMe, missingScopes, openState } from "@/lib/oauth";
 import { getXOAuthConfig } from "@/lib/x-config";
+import { publicUrl } from "@/lib/public-url";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
   const back = (code: string, detail?: string) => {
-    const url = new URL("/settings", req.url);
+    const url = publicUrl(req, "/settings");
     url.searchParams.set("x", code);
     if (detail) url.searchParams.set("detail", detail.slice(0, 300));
     const res = NextResponse.redirect(url);

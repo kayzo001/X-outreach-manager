@@ -2,20 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { OAUTH_COOKIE, buildAuthorizeUrl, newOAuthState, sealState } from "@/lib/oauth";
 import { getXOAuthConfig } from "@/lib/x-config";
+import { publicOrigin, publicUrl } from "@/lib/public-url";
 import { logActivity } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const user = await currentUser();
-  if (!user) return NextResponse.redirect(new URL("/login", req.url));
+  if (!user) return NextResponse.redirect(publicUrl(req, "/login"));
   const cfg = await getXOAuthConfig(); // database credentials first, then .env fallback
-  if (cfg.source === "none") return NextResponse.redirect(new URL("/settings?x=missing_client", req.url));
-  if (cfg.error) return NextResponse.redirect(new URL(`/settings?x=config_error&detail=${encodeURIComponent(cfg.error)}`, req.url));
+  if (cfg.source === "none") return NextResponse.redirect(publicUrl(req, "/settings?x=missing_client"));
+  if (cfg.error) return NextResponse.redirect(publicUrl(req, `/settings?x=config_error&detail=${encodeURIComponent(cfg.error)}`));
   // The browser must come back to the SAME host the callback is registered on, or the state cookie won't be sent.
-  const cbHost = new URL(cfg.redirectUri).host;
-  if (cbHost !== req.headers.get("host")) {
-    return NextResponse.redirect(new URL(`/settings?x=host_mismatch&detail=${encodeURIComponent(`open the app at ${new URL(cfg.redirectUri).origin} (callback host) instead of ${req.headers.get("host")}`)}`, req.url));
+  const appHost = new URL(publicOrigin(req)).host, cbHost = new URL(cfg.redirectUri).host;
+  if (cbHost !== appHost) {
+    return NextResponse.redirect(publicUrl(req, `/settings?x=host_mismatch&detail=${encodeURIComponent(`open the app at ${new URL(cfg.redirectUri).origin} (callback host) instead of ${appHost}`)}`));
   }
   const s = newOAuthState(user.id, cfg.fingerprint);
   await logActivity({ type: "oauth.started", message: "Started X OAuth connection" });
